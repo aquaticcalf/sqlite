@@ -431,7 +431,14 @@ fn bind_value(stmt: *c.sqlite3_stmt, index: c_int, value: anytype) !void {
                     "cannot bind slice of " ++ @typeName(ptr.child),
                 ),
             },
-            .one   => try bind_value(stmt, index, value.*),
+            .one   => switch (@typeInfo(ptr.child)) {
+                .array => |arr| if (arr.child == u8) {
+                    try bind_value(stmt, index, @as([]const u8, &value.*));
+                } else @compileError(
+                    "cannot bind pointer to array of " ++ @typeName(arr.child),
+                ),
+                else => try bind_value(stmt, index, value.*),
+            },
             else   => @compileError(
                 "cannot bind type " ++ @typeName(T),
             ),
