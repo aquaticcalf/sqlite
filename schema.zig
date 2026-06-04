@@ -185,15 +185,30 @@ pub fn create_stmt(comptime TableMeta: type, comptime if_not_exists: bool) []con
 }
 
 pub fn insert_stmt(comptime TableMeta: type, comptime ValuesType: type) []const u8 {
+    return insert_stmt_prefix(TableMeta, ValuesType, "");
+}
+
+pub fn insert_stmt_prefix(comptime TableMeta: type, comptime ValuesType: type, comptime prefix: []const u8) []const u8 {
     const field_info = @typeInfo(ValuesType).@"struct".fields;
     assert(field_info.len > 0);
 
     var buf: [2000]u8 = undefined;
     var pos: u32 = 0;
 
-    const header = "INSERT INTO ";
+    const header = "INSERT ";
     @memcpy(buf[0..header.len], header);
     pos += @intCast(header.len);
+
+    if (prefix.len > 0) {
+        @memcpy(buf[pos..], prefix);
+        pos += @intCast(prefix.len);
+        buf[pos] = ' ';
+        pos += 1;
+    }
+
+    const into = "INTO ";
+    @memcpy(buf[pos..], into);
+    pos += @intCast(into.len);
 
     @memcpy(buf[pos..], TableMeta.table_name);
     pos += @intCast(TableMeta.table_name.len);
@@ -234,6 +249,11 @@ pub fn insert_stmt(comptime TableMeta: type, comptime ValuesType: type) []const 
 }
 
 pub fn insert(db: *Db, comptime TableMeta: type, values: anytype) !void {
-    const sql = comptime insert_stmt(TableMeta, @TypeOf(values));
+    const sql = comptime insert_stmt_prefix(TableMeta, @TypeOf(values), "");
+    try db.exec_args(sql, values);
+}
+
+pub fn insert_or_ignore(db: *Db, comptime TableMeta: type, values: anytype) !void {
+    const sql = comptime insert_stmt_prefix(TableMeta, @TypeOf(values), "OR IGNORE");
     try db.exec_args(sql, values);
 }

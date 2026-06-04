@@ -12,3 +12,4 @@ pub const Column     = schema.Column;
 pub const create_stmt = schema.create_stmt;
 pub const insert_stmt = schema.insert_stmt;
 pub const insert     = schema.insert;
+pub const insert_or_ignore = schema.insert_or_ignore;
