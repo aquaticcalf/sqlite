@@ -246,6 +246,11 @@ pub const Db = struct {
 
     /// --- Utility -------------------------------------------------------
 
+    pub fn pragma(self: *Db, comptime name: []const u8, comptime value: []const u8) !void {
+        const sql = "PRAGMA " ++ name ++ " = " ++ value;
+        try self.exec(comptime sql, .{});
+    }
+
     pub fn exec_multi(self: *Db, query: []const u8) !void {
         var remaining = query;
         while (remaining.len > 0) {

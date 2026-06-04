@@ -216,3 +216,108 @@ pub fn insert_or_ignore(db: *Db, comptime TableMeta: type, values: anytype) !voi
     const sql = comptime insert_stmt_prefix(TableMeta, @TypeOf(values), "OR IGNORE");
     try db.exec_args(sql.data[0..sql.len], values);
 }
+
+pub fn insert_or_replace(db: *Db, comptime TableMeta: type, values: anytype) !void {
+    const sql = comptime insert_stmt_prefix(TableMeta, @TypeOf(values), "OR REPLACE");
+    try db.exec_args(sql.data[0..sql.len], values);
+}
+
+/// UPDATE helper. Each field in `sets` is a comptime SQL expression string
+/// (e.g. "'processing'", "unixepoch()", "COALESCE(a, b)"). Use "?" for
+/// runtime-bound parameters; the corresponding values go in `args`.
+pub fn update(
+    db: *Db,
+    comptime TableMeta: type,
+    comptime sets: anytype,
+    comptime where_clause: []const u8,
+    args: anytype,
+) !void {
+    const field_info = @typeInfo(@TypeOf(sets)).@"struct".fields;
+    assert(field_info.len > 0);
+
+    var buf: [4096]u8 = undefined;
+    var pos: u32 = 0;
+    const bp: *[4096]u8 = &buf;
+
+    copy(bp, &pos, "UPDATE ");
+    copy(bp, &pos, TableMeta.table_name);
+    copy(bp, &pos, " SET ");
+
+    inline for (field_info, 0..) |field, i| {
+        if (i > 0) copy(bp, &pos, ", ");
+        copy(bp, &pos, field.name);
+        copy(bp, &pos, " = ");
+        copy(bp, &pos, @field(sets, field.name));
+    }
+
+    if (where_clause.len > 0) {
+        copy(bp, &pos, " WHERE ");
+        copy(bp, &pos, where_clause);
+    }
+
+    assert(pos <= buf.len);
+    try db.exec_args(buf[0..pos], args);
+}
+
+// ── Index builder ─────────────────────────────────────────────
+
+pub const IndexOpts = struct {
+    unique: bool = false,
+    if_not_exists: bool = true,
+    where: ?[]const u8 = null,
+};
+
+pub fn create_index(
+    comptime idx_name: []const u8,
+    comptime table_name: []const u8,
+    comptime columns: []const u8,
+    comptime opts: IndexOpts,
+) struct { data: [1024]u8, len: u32 } {
+    var buf: [1024]u8 = undefined;
+    var pos: u32 = 0;
+    const bp: *[1024]u8 = &buf;
+
+    copy(bp, &pos, "CREATE ");
+    if (opts.unique) copy(bp, &pos, "UNIQUE ");
+    copy(bp, &pos, "INDEX ");
+    if (opts.if_not_exists) copy(bp, &pos, "IF NOT EXISTS ");
+    copy(bp, &pos, idx_name);
+    copy(bp, &pos, " ON ");
+    copy(bp, &pos, table_name);
+    buf[pos] = ' ';
+    pos += 1;
+    buf[pos] = '(';
+    pos += 1;
+    copy(bp, &pos, columns);
+    buf[pos] = ')';
+    pos += 1;
+    if (opts.where) |w| {
+        copy(bp, &pos, " WHERE ");
+        copy(bp, &pos, w);
+    }
+
+    assert(pos <= buf.len);
+    return .{ .data = buf, .len = pos };
+}
+
+// ── Test helpers ──────────────────────────────────────────────
+
+/// Comptime builder for: SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN (...)
+pub fn count_tables_query(comptime names: []const []const u8) struct { data: [512]u8, len: u32 } {
+    var buf: [512]u8 = undefined;
+    var pos: u32 = 0;
+    const bp: *[512]u8 = &buf;
+    copy(bp, &pos, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN (");
+    inline for (names, 0..) |name, i| {
+        if (i > 0) copy(bp, &pos, ", ");
+        buf[pos] = '\'';
+        pos += 1;
+        copy(bp, &pos, name);
+        buf[pos] = '\'';
+        pos += 1;
+    }
+    buf[pos] = ')';
+    pos += 1;
+    assert(pos <= buf.len);
+    return .{ .data = buf, .len = pos };
+}
