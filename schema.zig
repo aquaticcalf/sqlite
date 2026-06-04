@@ -3,6 +3,11 @@ const assert = std.debug.assert;
 const conn = @import("conn.zig");
 const Db = conn.Db;
 
+fn copy(buf: anytype, pos: *u32, src: []const u8) void {
+    @memcpy(buf[pos.*..][0..src.len], src);
+    pos.* += @intCast(src.len);
+}
+
 fn sqliteType(comptime T: type) []const u8 {
     return switch (@typeInfo(T)) {
         .int, .comptime_int => "INTEGER",
@@ -70,7 +75,7 @@ fn deriveRowType(comptime cols: anytype) type {
         field_names[i] = field.name;
         field_types[i] = col.field_type;
     }
-    return @Struct(.auto, null, &field_names, &field_types[0..], &[_]std.builtin.Type.StructField.Attributes{.{}} ** n);
+    return @Struct(.auto, null, &field_names, &field_types[0..], &([_]std.builtin.Type.StructField.Attributes{.{}} ** n));
 }
 
 pub fn table(comptime name: []const u8, comptime cols: anytype) type {
@@ -87,57 +92,31 @@ pub fn table(comptime name: []const u8, comptime cols: anytype) type {
 }
 
 fn emitColumn(buf: *[4096]u8, pos: *u32, comptime T: type, col: anytype) void {
-    @memcpy(buf[*pos..], col.name);
-    pos.* += @intCast(col.name.len);
+    copy(buf, pos, col.name);
     buf[pos.*] = ' ';
     pos.* += 1;
 
     const stype = comptime sqliteType(T);
-    @memcpy(buf[*pos..], stype);
-    pos.* += @intCast(stype.len);
+    copy(buf, pos, stype);
 
-    if (col._pk) {
-        const s = " PRIMARY KEY";
-        @memcpy(buf[*pos..], s);
-        pos.* += @intCast(s.len);
-    }
-    if (col._nn and !col._pk) {
-        const s = " NOT NULL";
-        @memcpy(buf[*pos..], s);
-        pos.* += @intCast(s.len);
-    }
-    if (col._uq) {
-        const s = " UNIQUE";
-        @memcpy(buf[*pos..], s);
-        pos.* += @intCast(s.len);
-    }
+    if (col._pk) copy(buf, pos, " PRIMARY KEY");
+    if (col._nn and !col._pk) copy(buf, pos, " NOT NULL");
+    if (col._uq) copy(buf, pos, " UNIQUE");
     if (col._coll) |c| {
-        const s = " COLLATE ";
-        @memcpy(buf[*pos..], s);
-        pos.* += @intCast(s.len);
-        @memcpy(buf[*pos..], c);
-        pos.* += @intCast(c.len);
+        copy(buf, pos, " COLLATE ");
+        copy(buf, pos, c);
     }
     if (col._def) |d| {
-        const s = " DEFAULT ";
-        @memcpy(buf[*pos..], s);
-        pos.* += @intCast(s.len);
-        @memcpy(buf[*pos..], d);
-        pos.* += @intCast(d.len);
+        copy(buf, pos, " DEFAULT ");
+        copy(buf, pos, d);
     }
     if (col._ref) |r| {
-        const s = " REFERENCES ";
-        @memcpy(buf[*pos..], s);
-        pos.* += @intCast(s.len);
-        @memcpy(buf[*pos..], r);
-        pos.* += @intCast(r.len);
+        copy(buf, pos, " REFERENCES ");
+        copy(buf, pos, r);
     }
     if (col._chk) |c| {
-        const s = " CHECK (";
-        @memcpy(buf[*pos..], s);
-        pos.* += @intCast(s.len);
-        @memcpy(buf[*pos..], c);
-        pos.* += @intCast(c.len);
+        copy(buf, pos, " CHECK (");
+        copy(buf, pos, c);
         buf[pos.*] = ')';
         pos.* += 1;
     }
@@ -147,19 +126,10 @@ pub fn create_stmt(comptime TableMeta: type, comptime if_not_exists: bool) []con
     var buf: [4096]u8 = undefined;
     var pos: u32 = 0;
 
-    const head = "CREATE TABLE ";
-    @memcpy(buf[0..head.len], head);
-    pos += @intCast(head.len);
-
-    if (if_not_exists) {
-        const nie = "IF NOT EXISTS ";
-        @memcpy(buf[pos..], nie);
-        pos += @intCast(nie.len);
-    }
-
-    @memcpy(buf[pos..], TableMeta.table_name);
-    pos += @intCast(TableMeta.table_name.len);
-
+    const bp: *[4096]u8 = &buf;
+    copy(bp, &pos, "CREATE TABLE ");
+    if (if_not_exists) copy(bp, &pos, "IF NOT EXISTS ");
+    copy(bp, &pos, TableMeta.table_name);
     buf[pos] = ' ';
     pos += 1;
     buf[pos] = '(';
@@ -194,24 +164,16 @@ pub fn insert_stmt_prefix(comptime TableMeta: type, comptime ValuesType: type, c
 
     var buf: [2000]u8 = undefined;
     var pos: u32 = 0;
+    const bp: *[2000]u8 = &buf;
 
-    const header = "INSERT ";
-    @memcpy(buf[0..header.len], header);
-    pos += @intCast(header.len);
-
+    copy(bp, &pos, "INSERT ");
     if (prefix.len > 0) {
-        @memcpy(buf[pos..], prefix);
-        pos += @intCast(prefix.len);
+        copy(bp, &pos, prefix);
         buf[pos] = ' ';
         pos += 1;
     }
-
-    const into = "INTO ";
-    @memcpy(buf[pos..], into);
-    pos += @intCast(into.len);
-
-    @memcpy(buf[pos..], TableMeta.table_name);
-    pos += @intCast(TableMeta.table_name.len);
+    copy(bp, &pos, "INTO ");
+    copy(bp, &pos, TableMeta.table_name);
     buf[pos] = ' ';
     pos += 1;
     buf[pos] = '(';
@@ -224,13 +186,10 @@ pub fn insert_stmt_prefix(comptime TableMeta: type, comptime ValuesType: type, c
             buf[pos] = ' ';
             pos += 1;
         }
-        @memcpy(buf[pos..], field.name);
-        pos += @intCast(field.name.len);
+        copy(bp, &pos, field.name);
     }
 
-    const middle = ") VALUES (";
-    @memcpy(buf[pos..], middle);
-    pos += @intCast(middle.len);
+    copy(bp, &pos, ") VALUES (");
 
     inline for (field_info, 0..) |_, i| {
         if (i > 0) {
