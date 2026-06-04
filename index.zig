@@ -8,5 +8,7 @@ pub const Error    = conn.Error;
 pub const Iterator = conn.Iterator;
 
 pub const table      = schema.table;
+pub const Column     = schema.Column;
+pub const create_stmt = schema.create_stmt;
 pub const insert_stmt = schema.insert_stmt;
 pub const insert     = schema.insert;
