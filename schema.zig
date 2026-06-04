@@ -154,11 +154,11 @@ pub fn create_stmt(comptime TableMeta: type, comptime if_not_exists: bool) struc
     return .{ .data = buf, .len = pos };
 }
 
-pub fn insert_stmt(comptime TableMeta: type, comptime ValuesType: type) []const u8 {
-    return insert_stmt_prefix(TableMeta, ValuesType, "");
+pub fn insert_stmt(comptime TableMeta: type, comptime ValuesType: type) [2000]u8 {
+    return insert_stmt_prefix(TableMeta, ValuesType, "").data;
 }
 
-pub fn insert_stmt_prefix(comptime TableMeta: type, comptime ValuesType: type, comptime prefix: []const u8) []const u8 {
+pub fn insert_stmt_prefix(comptime TableMeta: type, comptime ValuesType: type, comptime prefix: []const u8) struct { data: [2000]u8, len: u32 } {
     const field_info = @typeInfo(ValuesType).@"struct".fields;
     assert(field_info.len > 0);
 
@@ -204,15 +204,15 @@ pub fn insert_stmt_prefix(comptime TableMeta: type, comptime ValuesType: type, c
     pos += 1;
 
     assert(pos <= buf.len);
-    return buf[0..pos];
+    return .{ .data = buf, .len = pos };
 }
 
 pub fn insert(db: *Db, comptime TableMeta: type, values: anytype) !void {
     const sql = comptime insert_stmt_prefix(TableMeta, @TypeOf(values), "");
-    try db.exec_args(sql, values);
+    try db.exec_args(sql.data[0..sql.len], values);
 }
 
 pub fn insert_or_ignore(db: *Db, comptime TableMeta: type, values: anytype) !void {
     const sql = comptime insert_stmt_prefix(TableMeta, @TypeOf(values), "OR IGNORE");
-    try db.exec_args(sql, values);
+    try db.exec_args(sql.data[0..sql.len], values);
 }
