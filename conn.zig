@@ -247,14 +247,12 @@ pub const Db = struct {
     /// --- Utility -------------------------------------------------------
 
     pub fn exec_multi(self: *Db, query: []const u8) !void {
-        var tail: [*c]const u8 = query.ptr;
-        while (true) {
-            const chunk = std.mem.span(tail);
-            if (chunk.len == 0) return;
-
+        var remaining = query;
+        while (remaining.len > 0) {
             var handle: ?*c.sqlite3_stmt = undefined;
+            var tail: [*c]const u8 = undefined;
             const rc = c.sqlite3_prepare_v3(
-                self.db, tail, @intCast(chunk.len), 0, &handle, &tail,
+                self.db, remaining.ptr, @intCast(remaining.len), 0, &handle, &tail,
             );
             if (rc != c.SQLITE_OK) return map_error(rc);
 
@@ -265,6 +263,10 @@ pub const Db = struct {
                     return map_error(step_rc);
                 }
             }
+
+            const consumed = @intFromPtr(tail) - @intFromPtr(remaining.ptr);
+            if (consumed >= remaining.len) return;
+            remaining = remaining[consumed..];
         }
     }
 
