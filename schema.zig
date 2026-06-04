@@ -122,7 +122,7 @@ fn emitColumn(buf: *[4096]u8, pos: *u32, comptime T: type, col: anytype) void {
     }
 }
 
-pub fn create_stmt(comptime TableMeta: type, comptime if_not_exists: bool) []const u8 {
+pub fn create_stmt(comptime TableMeta: type, comptime if_not_exists: bool) struct { data: [4096]u8, len: u32 } {
     var buf: [4096]u8 = undefined;
     var pos: u32 = 0;
 
@@ -151,7 +151,7 @@ pub fn create_stmt(comptime TableMeta: type, comptime if_not_exists: bool) []con
     buf[pos] = ')';
     pos += 1;
     assert(pos <= buf.len);
-    return buf[0..pos];
+    return .{ .data = buf, .len = pos };
 }
 
 pub fn insert_stmt(comptime TableMeta: type, comptime ValuesType: type) []const u8 {
